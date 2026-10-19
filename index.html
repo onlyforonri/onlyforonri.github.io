@@ -181,13 +181,13 @@ function openPost(i){
   $("count").textContent="1/"+p.slides.length;
   $("count").style.display=p.slides.length>1?"":"none";
   dots.style.display=p.slides.length>1?"":"none";
-  cur=i;$("likers").hidden=true;$("cin").value="";renderSocial();
+  cur=i;$("likers").hidden=true;$("cin").value="";renderSocial();watchPost(key(i));
   rail.scrollLeft=0;
   $("home").hidden=true;$("post").hidden=false;window.scrollTo(0,0);
   playAudio(p.audio);
   try{history.pushState({post:i},"")}catch(e){}
 }
-function closePost(){stopAudio();$("post").hidden=true;$("home").hidden=false}
+function closePost(){stopAudio();unwatch();$("post").hidden=true;$("home").hidden=false}
 $("back").onclick=function(){
   if(history.state&&history.state.post!==undefined){history.back()}else{closePost()}
 };
@@ -236,6 +236,22 @@ var FIREBASE_CONFIG={
 };
 /* ================================================================================ */
 
+var authed=false,watching=null,unsubC=null,unsubL=null;
+function unwatch(){
+  if(unsubC){unsubC();unsubC=null}
+  if(unsubL){unsubL();unsubL=null}
+  watching=null;
+}
+function watchPost(k){
+  if(!fdb||!authed||watching===k)return;
+  unwatch();watching=k;allC=[];allL=[];renderSocial();
+  unsubC=fdb.collection("comments").where("post","==",k).limit(100).onSnapshot(function(s){
+    allC=s.docs.map(function(d){var o=d.data();o.id=d.id;return o});renderSocial();
+  },function(){});
+  unsubL=fdb.collection("likes").where("post","==",k).limit(300).onSnapshot(function(s){
+    allL=s.docs.map(function(d){var o=d.data();o.id=d.id;return o});renderSocial();
+  },function(){});
+}
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||"[]")}catch(e){return[]}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 function fail(){toast("저장하지 못했어요. 잠시 후 다시 시도해 주세요")}
@@ -298,12 +314,8 @@ $("cin").addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.isComposi
     fdb=firebase.firestore();
     firebase.auth().signInAnonymously().then(function(r){
       uid=r.user.uid;
-      fdb.collection("comments").orderBy("ts").limitToLast(1000).onSnapshot(function(s){
-        allC=s.docs.map(function(d){var o=d.data();o.id=d.id;return o});renderSocial();
-      },function(){});
-      fdb.collection("likes").limit(2000).onSnapshot(function(s){
-        allL=s.docs.map(function(d){var o=d.data();o.id=d.id;return o});renderSocial();
-      },function(){});
+      authed=true;
+      if(!$("post").hidden)watchPost(key(cur));
     }).catch(function(){fdb=null;allC=lsGet("sv_c");allL=lsGet("sv_l");renderSocial();toast("서버에 연결하지 못해 이 기기에만 저장돼요")});
   }catch(e){fdb=null;allC=lsGet("sv_c");allL=lsGet("sv_l");renderSocial()}
 })();
